@@ -1,0 +1,12 @@
+.idea/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# Jupyter Notebook metadata
+**/.ipynb_checkpoints
+**/.ipynb_checkpoints/
+**/.ipynb_checkpoints/*
+
+# Jupyter Notebook config
+.jupyter/
