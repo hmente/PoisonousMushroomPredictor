@@ -213,6 +213,16 @@ def grid_search(X_train, y_train, param_grid, scoring_func):
         print(f"Rank {rank}: Zero-one loss: {mean_score:.6f} with params: {params}")
 
     return results, sorted_results[0][0], sorted_results[0][1]
+def evaluate_test_result(test_loss, is_grid_search=False):
+    if test_loss < 0.05:
+        print("Great result! The model performs very well with almost perfect classification.")
+    elif test_loss < 0.1:
+        print("Good result! The model's performance is strong, but there may be room for improvement.")
+    else:
+        if is_grid_search:
+            print("The result is not satisfactory. The model may be underfitting or overfitting. Review the parameters and try again.")
+        else:
+            print("The result can be improved. The model may be underfitting or overfitting. Consider adjusting parameters like max_depth or experimenting with different split functions.")
 
 if __name__ == '__main__':
     data = pd.read_csv('data/secondary_data.csv', delimiter=';')
@@ -259,26 +269,56 @@ if __name__ == '__main__':
     y = data_encoded['class']
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
+    # Custom parameter range for grid search
     param_grid = [
         {
             'max_depth': [10, 15, 20],
             'split_function': ['scaled_entropy', 'gini', 'squared_impurity']
         }
     ]
-    results, best_params, best_score = grid_search(X_train, y_train, param_grid, scoring_func=zero_one_loss)
 
-    print(f"\nBest parameters: {best_params}")
-    print(f"Best score (zero-one loss): {best_score}")
+    try:
+        user_choice = input("\nWould you like to use the best parameters found by grid search? (yes/no): ").strip().lower()
 
-    best_tree = DecisionTree(
-        max_depth=best_params['max_depth'],
-        split_function=best_params['split_function'],
-        min_samples_split=2,
-        entropy_threshold=0.0001
-    )
-    best_tree.fit(X_train.values, y_train.values)
+        if user_choice == 'yes':
+            print("\nRunning grid search for best parameters...")
+            results, best_params, best_score = grid_search(X_train, y_train, param_grid, scoring_func=zero_one_loss)
 
-    y_test_pred = best_tree.predict(X_test.values)
-    test_loss = zero_one_loss(y_test, y_test_pred)
+            print(f"\nBest parameters: {best_params}")
+            print(f"Best score (zero-one loss): {best_score}")
 
-    print(f"zero one loss on test set with best params: {test_loss:.6f}")
+            best_tree = DecisionTree(
+                max_depth=best_params['max_depth'],
+                split_function=best_params['split_function'],
+                min_samples_split=2,
+                entropy_threshold=0.0001
+            )
+            best_tree.fit(X_train.values, y_train.values)
+
+            y_test_pred = best_tree.predict(X_test.values)
+            test_loss = zero_one_loss(y_test, y_test_pred)
+            print(f"Zero-one loss on test set with best params: {test_loss:.6f}")
+            evaluate_test_result(test_loss)
+        elif user_choice == 'no':
+            print("\nPlease enter your custom parameters.")
+            max_depth = int(input("Enter the max depth for the tree (e.g., 10, 15, 20): "))
+            split_function = input("Enter the split function (scaled_entropy/gini/squared_impurity): ").strip()
+
+            custom_tree = DecisionTree(
+                max_depth=max_depth,
+                split_function=split_function,
+                min_samples_split=2,
+                entropy_threshold=0.0001
+            )
+
+            custom_tree.fit(X_train.values, y_train.values)
+
+            y_test_pred = custom_tree.predict(X_test.values)
+            test_loss = zero_one_loss(y_test, y_test_pred)
+            print(f"Zero-one loss on test set with custom params: {test_loss:.6f}")
+            evaluate_test_result(test_loss)
+        else:
+            print("Invalid input. Please run the program again and choose 'yes' or 'no'.")
+
+    except Exception as exc:
+        print(f"There was an exception running the program. Exception: {exc}")
