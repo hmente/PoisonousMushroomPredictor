@@ -231,31 +231,26 @@ if __name__ == '__main__':
     missing_data_percentage = missing_data_percentage.sort_values(ascending=False)
     # print(missing_data_percentage)
 
-    # Dropping columns with too many missing values (more than 80%)
     columns_to_drop = ['veil-type', 'spore-print-color', 'veil-color', 'stem-root', 'stem-surface']
     data_cleaned = data.drop(columns=columns_to_drop)
     # print(data_cleaned.head())
 
-    # Filling missing values with the most frequent value in the remaining columns
     columns_to_fill = ['gill-spacing', 'cap-surface', 'gill-attachment', 'ring-type']
     for column in columns_to_fill:
         most_frequent_value = data_cleaned[column].mode()[0]  # Finding the most frequent value
         data_cleaned[column].fillna(most_frequent_value, inplace=True)
 
-    # print(data_cleaned.isnull().sum())  # Verifying that missing data has been filled
+    # print(data_cleaned.isnull().sum())
 
-    # Select columns that are not numeric
     non_numeric_columns = data_cleaned.select_dtypes(exclude=['number']).columns
     print(non_numeric_columns)
 
     print(data_cleaned.info())
     print(data_cleaned.nunique())
 
-    # Encoding
     one_hot_columns = ['cap-shape', 'gill-attachment', 'cap-surface', 'cap-color', 'gill-color', 'stem-color',
                        'ring-type', 'habitat']
     data_encoded = pd.get_dummies(data_cleaned, columns=one_hot_columns)
-    # Convert boolean (True/False) columns to numeric (1/0)
     data_encoded = data_encoded.apply(lambda col: col.map(lambda x: 1 if x == True else (0 if x == False else x)))
     label_columns = ['does-bruise-or-bleed', 'gill-spacing', 'class', 'has-ring', 'season']
     le = LabelEncoder()
@@ -269,7 +264,6 @@ if __name__ == '__main__':
     y = data_encoded['class']
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    # Custom parameter range for grid search
     param_grid = [
         {
             'max_depth': [10, 15, 20],
