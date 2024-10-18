@@ -3,9 +3,9 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
 import warnings
 import numpy as np
-import itertools
 from sklearn.model_selection import KFold
 from joblib import Parallel, delayed
+from sklearn.metrics import accuracy_score
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
@@ -22,8 +22,9 @@ class TreeNode:
     def add_children(self, left, right):
         self.left_child = left
         self.right_child = right
+
 class DecisionTree:
-    def __init__(self, max_depth=None, min_samples_split=2, split_function="gini", entropy_threshold=None):
+    def __init__(self, max_depth=None, min_samples_split=2, split_function=None, entropy_threshold=0.0001):
         self.max_depth = max_depth
         self.min_samples_split = min_samples_split
         self.split_function = split_function
@@ -154,26 +155,27 @@ class DecisionTree:
             return self._traverse_tree(x, node.left_child)
         else:
             return self._traverse_tree(x, node.right_child)
+
 def zero_one_loss(y_true, y_pred):
     return np.mean(y_pred != y_true)
-def grid_search(X_train, y_train, param_grid, scoring_func):
 
-    cv = KFold(n_splits=5, shuffle=True, random_state=42)
+def grid_search(X_train, y_train, param_grid, scoring_func):
+    k = 5
+    cv = KFold(n_splits=k, shuffle=True, random_state=42)
 
     def evaluate_params(params):
         current_scores = []
-        depths = []
-        leafs = []
 
         for train_idxs, val_idxs in cv.split(X_train, y_train):
             X_train_cv, y_train_cv = X_train.iloc[train_idxs], y_train.iloc[train_idxs]
             X_val_cv, y_val_cv = X_train.iloc[val_idxs], y_train.iloc[val_idxs]
 
+            entropy_threshold = params.get('entropy_threshold', 0.0001)
+
             model = DecisionTree(
                 max_depth=params.get('max_depth'),
-                entropy_threshold=0.0001,
                 split_function=params['split_function'],
-                min_samples_split=2
+                entropy_threshold=entropy_threshold
             )
 
             model.fit(X_train_cv.values, y_train_cv.values)
@@ -182,23 +184,33 @@ def grid_search(X_train, y_train, param_grid, scoring_func):
             score = scoring_func(y_val_cv, y_val_pred)
             current_scores.append(score)
 
-            depths.append(model.root.depth)
-            leafs.append(model.root.leaf_count)
-
         mean_score = np.mean(current_scores)
-        mean_depth = np.mean(depths)
-        mean_leafs = np.mean(leafs)
 
-        print(f"Zero-one loss: {mean_score:.5f} with params: {params} \t Mean depth: {mean_depth:.1f}, Mean leafs: {mean_leafs:.1f}")
+        print(f"Zero-one loss: {mean_score:.5f} with params: {params}")
 
         return params, mean_score
 
-    param_combinations = [
-        dict(zip(param_dict.keys(), values)) for param_dict in param_grid for values in
-        itertools.product(*param_dict.values())
-    ]
+    param_combinations = []
 
-    print(f"\nTotal number of combinations: {len(param_combinations)}  x  5 cv = {5 * len(param_combinations)} iterations\n")
+    for params in param_grid:
+        split_function = params['split_function']
+        if split_function == 'scaled_entropy':
+            for depth in params['max_depth']:
+                for entropy_threshold in params['entropy_threshold']:
+                    param_combinations.append({
+                        'max_depth': depth,
+                        'split_function': split_function,
+                        'entropy_threshold': entropy_threshold
+                    })
+        else:
+            for depth in params['max_depth']:
+                param_combinations.append({
+                    'max_depth': depth,
+                    'split_function': split_function
+                })
+
+    print(
+        f"\nTotal number of combinations: {len(param_combinations)}  x  {k} cv = {k * len(param_combinations)} iterations\n")
 
     results = Parallel(n_jobs=-1)(delayed(evaluate_params)(params) for params in param_combinations)
 
@@ -213,34 +225,36 @@ def grid_search(X_train, y_train, param_grid, scoring_func):
         print(f"Rank {rank}: Zero-one loss: {mean_score:.6f} with params: {params}")
 
     return results, sorted_results[0][0], sorted_results[0][1]
-def evaluate_test_result(test_loss, is_grid_search=False):
+
+def evaluate_test_result(test_loss, y_test, y_test_pred, is_grid_search=False):
+    accuracy = accuracy_score(y_test, y_test_pred)
+    print(f"Test accuracy: {accuracy:.6f}")
+
     if test_loss < 0.05:
-        print("Great result! The model performs very well with almost perfect classification.")
+        print("Great result! The model performs very well with a good classification.")
     elif test_loss < 0.1:
         print("Good result! The model's performance is strong, but there may be room for improvement.")
     else:
-        if is_grid_search:
-            print("The result is not satisfactory. The model may be underfitting or overfitting. Review the parameters and try again.")
+        if not is_grid_search:
+            print(
+                "The result is not satisfactory. The model may be underfitting or overfitting. Review the parameters and try again.")
         else:
-            print("The result can be improved. The model may be underfitting or overfitting. Consider adjusting parameters like max_depth or experimenting with different split functions.")
+            print(
+                "The result can be improved. The model may be underfitting or overfitting. Consider improving the model.")
 
 if __name__ == '__main__':
     data = pd.read_csv('data/secondary_data.csv', delimiter=';')
 
     missing_data_percentage = (data.isnull().sum() / data.shape[0]) * 100
     missing_data_percentage = missing_data_percentage.sort_values(ascending=False)
-    # print(missing_data_percentage)
 
     columns_to_drop = ['veil-type', 'spore-print-color', 'veil-color', 'stem-root', 'stem-surface']
     data_cleaned = data.drop(columns=columns_to_drop)
-    # print(data_cleaned.head())
 
     columns_to_fill = ['gill-spacing', 'cap-surface', 'gill-attachment', 'ring-type']
     for column in columns_to_fill:
-        most_frequent_value = data_cleaned[column].mode()[0]  # Finding the most frequent value
+        most_frequent_value = data_cleaned[column].mode()[0]
         data_cleaned[column].fillna(most_frequent_value, inplace=True)
-
-    # print(data_cleaned.isnull().sum())
 
     non_numeric_columns = data_cleaned.select_dtypes(exclude=['number']).columns
     print(non_numeric_columns)
@@ -256,9 +270,6 @@ if __name__ == '__main__':
     le = LabelEncoder()
     for column in label_columns:
         data_encoded[column] = le.fit_transform(data_encoded[column])
-    # print(data_encoded.head())
-
-    #print(data_encoded.select_dtypes(exclude=['number']).columns)
 
     X = data_encoded.drop(['class'], axis=1)
     y = data_encoded['class']
@@ -267,7 +278,16 @@ if __name__ == '__main__':
     param_grid = [
         {
             'max_depth': [10, 15, 20],
-            'split_function': ['scaled_entropy', 'gini', 'squared_impurity']
+            'split_function': 'scaled_entropy',
+            'entropy_threshold': [0.01, 0.001, 0.0001]
+        },
+        {
+            'max_depth': [10, 15, 20],
+            'split_function': 'gini'
+        },
+        {
+            'max_depth': [10, 15, 20],
+            'split_function': 'squared_impurity'
         }
     ]
 
@@ -281,28 +301,38 @@ if __name__ == '__main__':
             print(f"\nBest parameters: {best_params}")
             print(f"Best score (zero-one loss): {best_score}")
 
-            best_tree = DecisionTree(
-                max_depth=best_params['max_depth'],
-                split_function=best_params['split_function'],
-                min_samples_split=2,
-                entropy_threshold=0.0001
-            )
+            if best_params['split_function'] == 'scaled_entropy':
+                best_tree = DecisionTree(
+                    max_depth=best_params['max_depth'],
+                    split_function=best_params['split_function'],
+                    entropy_threshold=best_params['entropy_threshold']
+                )
+            else:
+                best_tree = DecisionTree(
+                    max_depth=best_params['max_depth'],
+                    split_function=best_params['split_function']
+                )
+
             best_tree.fit(X_train.values, y_train.values)
 
             y_test_pred = best_tree.predict(X_test.values)
             test_loss = zero_one_loss(y_test, y_test_pred)
             print(f"Zero-one loss on test set with best params: {test_loss:.6f}")
-            evaluate_test_result(test_loss)
+            evaluate_test_result(test_loss, y_test, y_test_pred, is_grid_search=True)
         elif user_choice == 'no':
             print("\nPlease enter your custom parameters.")
             max_depth = int(input("Enter the max depth for the tree (e.g., 10, 15, 20): "))
             split_function = input("Enter the split function (scaled_entropy/gini/squared_impurity): ").strip()
+            if split_function == 'scaled_entropy':
+                entropy_threshold = float(input("Enter the entropy threshold (e.g., 0.01, 0.001, 0.0001): "))
+            else:
+                entropy_threshold = 0.0001
 
             custom_tree = DecisionTree(
                 max_depth=max_depth,
                 split_function=split_function,
                 min_samples_split=2,
-                entropy_threshold=0.0001
+                entropy_threshold=entropy_threshold
             )
 
             custom_tree.fit(X_train.values, y_train.values)
@@ -310,7 +340,7 @@ if __name__ == '__main__':
             y_test_pred = custom_tree.predict(X_test.values)
             test_loss = zero_one_loss(y_test, y_test_pred)
             print(f"Zero-one loss on test set with custom params: {test_loss:.6f}")
-            evaluate_test_result(test_loss)
+            evaluate_test_result(test_loss, y_test, y_test_pred)
         else:
             print("Invalid input. Please run the program again and choose 'yes' or 'no'.")
 
