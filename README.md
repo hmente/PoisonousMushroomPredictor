@@ -41,6 +41,7 @@ The DecisionTree class provides the core functionality for training and predicti
 - max_depth: The maximum depth the tree can reach before stopping.
 - min_samples_split: The minimum number of samples required to split a node.
 - split_function: Determines the criterion used to split the nodes (e.g., gini, scaled_entropy, or squared_impurity).
+- entropy_threshold: In the case of split_function is scaled_entropy.
 
 ### Grid Search
 A grid search function is provided to automatically evaluate combinations of hyperparameters (such as different max_depth values and split functions) using cross-validation. The best hyperparameters are selected based on minimizing the zero-one loss.
